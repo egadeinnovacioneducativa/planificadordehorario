@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Horario Inteligente</title>
+    <!-- Cargando React y Babel para procesar JSX en el navegador -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Cargando Tailwind CSS para los estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        /* Configuración de Impresión */
+        @media print {
+            @page {
+                size: landscape; /* Fuerza la orientación horizontal */
+                margin: 10mm;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+                background: white;
+                zoom: 85%; /* Escala al 85% */
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .no-print { display: none !important; }
+            button { display: none !important; }
+            
+            /* Asegurar que el contenedor ocupe el ancho horizontal */
+            .max-w-6xl {
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+
+            input {
+                border: none !important;
+                padding: 0 !important;
+            }
+        }
+
+        /* Prevención de selección de texto para mejorar la experiencia de mantener presionado */
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useRef } = React;
+
+        // Componentes de Iconos SVG internos
+        const AlertTriangle = ({ size = 16, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
+            </svg>
+        );
+
+        const Clock = ({ size = 16, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+        );
+
+        const Printer = ({ size = 16, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>
+            </svg>
+        );
+
+        const MousePointer2 = ({ size = 16, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/>
+            </svg>
+        );
+
+        const RotateCcw = ({ size = 16, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+            </svg>
+        );
+
+        const CATEGORIES = {
+            EMPTY: { id: 'empty', label: 'Vacío', color: 'bg-slate-100', text: 'text-slate-400', count: false },
+            PRESENCIALES: { id: 'presenciales', label: 'Clases Presenciales', color: 'bg-blue-500', text: 'text-white', count: true, limit: 15 },
+            AUTONOMO: { id: 'autonomo', label: 'Trabajo Autónomo', color: 'bg-green-500', text: 'text-white', count: true, limit: 15 },
+            EXPERIENCIAS: { id: 'experiencias', label: 'Experiencias/Extra', color: 'bg-yellow-400', text: 'text-slate-900', count: true, limit: 15 },
+            DELEITE: { id: 'deleite', label: 'Deleite', color: 'bg-purple-500', text: 'text-white', count: false },
+        };
+
+        const TIME_BLOCKS = [
+            { start: '08:00', end: '09:30', duration: 1.5 },
+            { start: '09:30', end: '11:00', duration: 1.5 },
+            { start: '11:00', end: '11:30', duration: 0.5 },
+            { start: '11:30', end: '13:00', duration: 1.5 },
+            { start: '13:00', end: '14:30', duration: 1.5 },
+            { start: '14:30', end: '15:30', duration: 1.0 },
+            { start: '15:30', end: '17:00', duration: 1.5 },
+            { start: '17:00', end: '18:30', duration: 1.5 },
+        ];
+
+        const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+
+        function App() {
+            const [schedule, setSchedule] = useState(() => {
+                const initial = {};
+                DAYS.forEach(day => {
+                    initial[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
+                });
+                return initial;
+            });
+
+            const [trimestre, setTrimestre] = useState("");
+            const [semana, setSemana] = useState("");
+
+            const timerRef = useRef(null);
+            const isLongPress = useRef(false);
+
+            const totals = useMemo(() => {
+                const counts = { presenciales: 0, autonomo: 0, experiencias: 0 };
+                DAYS.forEach(day => {
+                    schedule[day].forEach((cell, index) => {
+                        if (counts.hasOwnProperty(cell.catId)) counts[cell.catId] += TIME_BLOCKS[index].duration;
+                    });
+                });
+                return counts;
+            }, [schedule]);
+
+            const handleCategoryChange = (day, blockIndex) => {
+                const currentCell = schedule[day][blockIndex];
+                const keys = Object.values(CATEGORIES).map(c => c.id);
+                const currentIndex = keys.indexOf(currentCell.catId);
+                const nextIndex = (currentIndex + 1) % keys.length;
+                const newSchedule = { ...schedule };
+                newSchedule[day][blockIndex] = { ...currentCell, catId: keys[nextIndex] };
+                setSchedule(newSchedule);
+            };
+
+            const togglePainPoint = (day, blockIndex) => {
+                const newSchedule = { ...schedule };
+                newSchedule[day][blockIndex] = { ...newSchedule[day][blockIndex], isPainPoint: !newSchedule[day][blockIndex].isPainPoint };
+                setSchedule(newSchedule);
+            };
+
+            const resetSchedule = () => {
+                if (window.confirm("¿Estás seguro de que quieres borrar todo el horario? Esta acción no se puede deshacer.")) {
+                    const initial = {};
+                    DAYS.forEach(day => {
+                        initial[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
+                    });
+                    setSchedule(initial);
+                    setTrimestre("");
+                    setSemana("");
+                }
+            };
+
+            const handleMouseDown = (day, blockIndex) => {
+                isLongPress.current = false;
+                timerRef.current = setTimeout(() => {
+                    togglePainPoint(day, blockIndex);
+                    isLongPress.current = true;
+                }, 600);
+            };
+
+            const handleMouseUp = (day, blockIndex) => {
+                clearTimeout(timerRef.current);
+                if (!isLongPress.current) handleCategoryChange(day, blockIndex);
+            };
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 font-sans no-select relative">
+                    <div className="max-w-6xl mx-auto">
+                        
+                        {/* Logo superior derecho */}
+                        <div className="absolute top-4 right-4 md:top-8 md:right-8 w-32 md:w-48">
+                            <img 
+                                src="https://image.admisiones.tec.mx/lib/fe2b11747364057f721176/m/1/b910ad21-1913-4ce0-8f35-38c908814125.png" 
+                                alt="Logo Tec" 
+                                className="w-full h-auto object-contain"
+                            />
+                        </div>
+
+                        <header className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4 no-print pr-36">
+                            <div>
+                                <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Planificador de Horario</h1>
+                                <p className="text-slate-500 flex items-center gap-2 mt-1">
+                                    <MousePointer2 size={16} className="text-blue-500" /> Clic para categoría • <span className="font-bold text-orange-600">Mantén apretado</span> para Punto de Dolor
+                                </p>
+                            </div>
+                            <div className="flex gap-3">
+                                <button 
+                                    onClick={resetSchedule} 
+                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 rounded-lg shadow-sm font-medium transition-colors"
+                                    title="Borrar todo el horario"
+                                >
+                                    <RotateCcw size={16} /> Reiniciar
+                                </button>
+                                <button 
+                                    onClick={() => window.print()} 
+                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm font-medium transition-colors"
+                                >
+                                    <Printer size={16} /> Imprimir
+                                </button>
+                            </div>
+                        </header>
+
+                        {/* Bloques de Trimestre y Semana */}
+                        <div className="flex gap-8 mb-8 mt-12 md:mt-0">
+                            <div className="flex flex-col min-w-[140px]">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Trimestre</label>
+                                <input 
+                                    type="text" 
+                                    value={trimestre} 
+                                    onChange={(e) => setTrimestre(e.target.value)}
+                                    placeholder="Ej. Invierno 2024"
+                                    className="bg-transparent border-b-2 border-slate-200 focus:border-indigo-500 outline-none pb-1 font-bold text-slate-700 transition-colors placeholder:font-normal placeholder:text-slate-300"
+                                />
+                            </div>
+                            <div className="flex flex-col min-w-[100px]">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Semana</label>
+                                <input 
+                                    type="text" 
+                                    value={semana} 
+                                    onChange={(e) => setSemana(e.target.value)}
+                                    placeholder="Ej. 1"
+                                    className="bg-transparent border-b-2 border-slate-200 focus:border-indigo-500 outline-none pb-1 font-bold text-slate-700 transition-colors placeholder:font-normal placeholder:text-slate-300"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            {Object.entries(CATEGORIES).filter(([_, d]) => d.count).map(([key, data]) => {
+                                const isOver = totals[data.id] > data.limit;
+                                return (
+                                    <div key={key} className={`p-4 rounded-xl border shadow-sm ${isOver ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{data.label}</span>
+                                            {isOver ? <AlertTriangle size={18} className="text-red-500" /> : <Clock size={18} className="text-slate-400 no-print" />}
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className={`text-3xl font-black ${isOver ? 'text-red-600' : 'text-slate-800'}`}>{totals[data.id].toFixed(1)}h</span>
+                                            <span className="text-slate-400 text-sm">/ {data.limit}h</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-xl bg-white">
+                            <table className="w-full border-collapse min-w-[800px]">
+                                <thead>
+                                    <tr className="bg-slate-800 text-white">
+                                        <th className="p-4 text-left font-semibold text-sm w-32 border-b border-slate-700">Horario</th>
+                                        {DAYS.map(day => <th key={day} className="p-4 text-center font-semibold text-sm border-b border-slate-700">{day}</th>)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {TIME_BLOCKS.map((block, bIdx) => (
+                                        <tr key={bIdx} className="border-b border-slate-100 last:border-0">
+                                            <td className="p-4 bg-slate-50/50">
+                                                <div className="text-xl font-black text-slate-800 leading-none">{block.start}</div>
+                                                <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase">hasta {block.end}</div>
+                                            </td>
+                                            {DAYS.map(day => {
+                                                const cell = schedule[day][bIdx];
+                                                const cat = CATEGORIES[cell.catId.toUpperCase()] || CATEGORIES.EMPTY;
+                                                return (
+                                                    <td key={day} className="p-1">
+                                                        <div
+                                                            onMouseDown={() => handleMouseDown(day, bIdx)}
+                                                            onMouseUp={() => handleMouseUp(day, bIdx)}
+                                                            onMouseLeave={() => clearTimeout(timerRef.current)}
+                                                            onTouchStart={(e) => { e.preventDefault(); handleMouseDown(day, bIdx); }}
+                                                            onTouchEnd={(e) => { e.preventDefault(); handleMouseUp(day, bIdx); }}
+                                                            className={`w-full h-16 rounded-xl p-2 flex flex-col items-center justify-center relative cursor-pointer select-none border-2 transition-all
+                                                                ${cat.color} ${cat.text} ${cell.catId === 'empty' ? 'border-dashed border-slate-200' : 'border-transparent shadow-sm'}
+                                                                ${cell.isPainPoint ? 'ring-4 ring-orange-500/50 border-orange-500 scale-95 shadow-inner' : ''}
+                                                            `}
+                                                        >
+                                                            <span className="text-[10px] font-black uppercase text-center leading-tight">{cat.label}</span>
+                                                            {cell.isPainPoint && (
+                                                                <div className="absolute top-1 right-1 w-5 h-5 bg-orange-600 rounded-full border border-white flex items-center justify-center shadow-md">
+                                                                    <AlertTriangle size={12} className="text-white fill-white" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
