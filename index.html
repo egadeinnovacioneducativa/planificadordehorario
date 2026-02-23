@@ -3,42 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Horario Inteligente - 4 Semanas</title>
-    <!-- Cargando React y Babel para procesar JSX en el navegador -->
+    <title>Mi Horario Inteligente - 10 Semanas</title>
+    <!-- Cargando React y Babel -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Cargando Tailwind CSS para los estilos -->
+    <!-- Cargando Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
-        /* Configuración de Impresión */
+        /* Configuración de Impresión Reforzada */
         @media print {
             @page {
                 size: landscape; /* Fuerza la orientación horizontal */
                 margin: 5mm;
             }
-            body {
-                margin: 0;
-                padding: 0;
+            html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0 !important;
+                padding: 0 !important;
                 background: white !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
+            .no-print { display: none !important; }
             
-            /* Ocultar elementos marcados como no-print */
-            .no-print { 
-                display: none !important; 
-            }
-            
-            /* Asegurar que el contenedor de impresión sea visible */
+            /* Contenedor de impresión visible */
             .print-container {
                 display: block !important;
                 width: 100% !important;
-                zoom: 85%; /* Escala al 85% solicitada */
+                zoom: 85%; /* Mantiene la escala solicitada */
             }
 
-            /* Salto de página después de cada semana */
+            /* Forzar saltos de página por semana */
             .print-page-break {
                 page-break-after: always !important;
                 break-after: page !important;
@@ -46,7 +44,7 @@
                 padding-top: 5mm;
             }
 
-            /* Forzar el ancho completo del diseño */
+            /* Asegurar que las tablas ocupen el ancho total en horizontal */
             .max-w-6xl {
                 max-width: 100% !important;
                 width: 100% !important;
@@ -55,8 +53,6 @@
 
         /* Estilos en pantalla */
         .print-container { display: none; }
-
-        /* Prevención de selección de texto */
         .no-select {
             -webkit-user-select: none;
             -moz-user-select: none;
@@ -64,7 +60,6 @@
             user-select: none;
         }
 
-        /* Animación suave para cambio de semana (solo en el contenedor de semana) */
         .fade-in {
             animation: fadeIn 0.4s ease-out;
         }
@@ -72,15 +67,21 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        .auto-expand {
+            resize: none;
+            overflow: hidden;
+            min-height: 28px;
+        }
     </style>
 </head>
 <body class="bg-slate-50">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useRef } = React;
+        const { useState, useMemo, useRef, useEffect } = React;
 
-        // Componentes de Iconos SVG internos
+        // Iconos SVG internos
         const AlertTriangle = ({ size = 16, className = "" }) => (
             <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
                 <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
@@ -113,10 +114,17 @@
 
         const CATEGORIES = {
             EMPTY: { id: 'empty', label: 'Vacío', color: 'bg-slate-100', text: 'text-slate-400', count: false },
-            PRESENCIALES: { id: 'presenciales', label: 'Clases Presenciales', color: 'bg-blue-500', text: 'text-white', count: true, limit: 15 },
-            AUTONOMO: { id: 'autonomo', label: 'Trabajo Autónomo', color: 'bg-green-500', text: 'text-white', count: true, limit: 15 },
-            EXPERIENCIAS: { id: 'experiencias', label: 'Experiencias/Extra', color: 'bg-yellow-400', text: 'text-slate-900', count: true, limit: 15 },
-            DELEITE: { id: 'deleite', label: 'Deleite', color: 'bg-purple-500', text: 'text-white', count: false },
+            CLASES: { id: 'clases', label: 'Clases (Aula)', color: 'bg-blue-500', text: 'text-white', countType: 'clases' },
+            AUTONOMO: { id: 'autonomo', label: 'Trabajo Autónomo', color: 'bg-green-500', text: 'text-white', countType: 'autonomo' },
+            INSIGNIAS: { id: 'insignias', label: 'Exp. Insignias', color: 'bg-yellow-400', text: 'text-slate-900', countType: 'experiencias' },
+            ACTIVACION: { id: 'activacion', label: 'Exp. Activación', color: 'bg-pink-400', text: 'text-white', countType: 'experiencias' },
+            MICRO: { id: 'micro', label: 'Microexperiencias', color: 'bg-orange-500', text: 'text-white', countType: 'experiencias' },
+        };
+
+        const LIMITS = {
+            clases: { label: 'Clases', limit: 15 },
+            autonomo: { label: 'T. Autónomo', limit: 30 },
+            experiencias: { label: 'Experiencias', limit: 5 }
         };
 
         const TIME_BLOCKS = [
@@ -131,14 +139,152 @@
         ];
 
         const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-        const TOTAL_WEEKS = 4;
+        const TOTAL_WEEKS = 10;
+
+        // --- COMPONENTES AUXILIARES FUERA DE APP PARA EVITAR PÉRDIDA DE FOCO ---
+
+        const ScheduleCell = ({ day, bIdx, cell, cat, isPrint, onNoteChange, onMouseDown, onMouseUp, onMouseLeave }) => {
+            const textareaRef = useRef(null);
+
+            // Ajuste automático de altura para el textarea
+            useEffect(() => {
+                if (textareaRef.current) {
+                    textareaRef.current.style.height = "0px";
+                    textareaRef.current.style.height = textareaRef.current.scrollHeight + "px";
+                }
+            }, [cell.note]);
+
+            return (
+                <div
+                    onMouseDown={isPrint ? null : onMouseDown}
+                    onMouseUp={isPrint ? null : onMouseUp}
+                    onMouseLeave={isPrint ? null : onMouseLeave}
+                    className={`w-full min-h-[60px] rounded-xl p-1.5 flex flex-col items-center justify-start relative select-none border-2
+                        ${cat.color} ${cat.text} ${cell.catId === 'empty' ? 'border-dashed border-slate-200' : 'border-transparent shadow-sm hover:brightness-95'}
+                        ${cell.isPainPoint ? 'ring-4 ring-red-600 border-red-500 scale-95 shadow-inner' : ''}
+                        ${isPrint ? '' : 'cursor-pointer'}
+                    `}
+                >
+                    <span className="text-[7px] font-black uppercase text-center leading-tight mb-1 opacity-70 tracking-tighter">
+                        {cat.label}
+                    </span>
+
+                    {cell.catId !== 'empty' && (
+                        <textarea
+                            ref={textareaRef}
+                            value={cell.note}
+                            readOnly={isPrint}
+                            onChange={(e) => onNoteChange(e.target.value)}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onMouseUp={(e) => e.stopPropagation()}
+                            placeholder="..."
+                            className={`w-full bg-transparent border-none outline-none text-[12px] text-center font-black leading-tight auto-expand placeholder:text-current placeholder:opacity-20
+                                ${cat.text}
+                            `}
+                        />
+                    )}
+                    
+                    {cell.isPainPoint && (
+                        <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-600 rounded-full border border-white flex items-center justify-center shadow-md">
+                            <AlertTriangle size={10} className="text-white fill-white" />
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const WeekTable = ({ weekData, weekLabel, totals, trimestre, isPrint, handleNoteChange, handleMouseDown, handleMouseUp, timerRef }) => (
+            <div className={`${isPrint ? 'print-page-break' : ''}`}>
+                {/* Cabecera oficial para cada página de impresión */}
+                {isPrint && (
+                    <div className="flex justify-between items-center mb-6 px-2">
+                        <div>
+                            <h1 className="text-3xl font-black text-slate-900 leading-tight uppercase">PROGRAMA ACADÉMICO SEMANAL</h1>
+                            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest mt-1">Plan de Gestión del Tiempo</p>
+                        </div>
+                        <img src="https://image.admisiones.tec.mx/lib/fe2b11747364057f721176/m/1/b910ad21-1913-4ce0-8f35-38c908814125.png" alt="Logo" className="w-48 object-contain" />
+                    </div>
+                )}
+
+                <div className="flex justify-between items-end mb-4">
+                    <div className="flex gap-6 items-end">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trimestre</span>
+                            <span className="text-lg font-bold text-slate-800 border-b-2 border-slate-100 min-w-[140px]">{trimestre || "—"}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Periodo</span>
+                            <span className="text-lg font-bold text-indigo-600 border-b-2 border-indigo-100 min-w-[120px]">{weekLabel}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="flex gap-3">
+                        {Object.entries(LIMITS).map(([key, config]) => {
+                            const current = totals[key];
+                            const isOver = current > config.limit;
+                            return (
+                                <div key={key} className={`flex flex-col items-center justify-center px-6 py-2 rounded-xl transition-all ${isOver ? 'bg-red-600 text-white ring-4 ring-red-400 shadow-xl scale-110' : 'bg-white border-2 border-slate-200 shadow-sm'}`}>
+                                    <span className={`text-[9px] font-black uppercase mb-1 tracking-tighter ${isOver ? 'text-red-100' : 'text-slate-400'}`}>{config.label}</span>
+                                    <span className={`text-xl font-black flex items-center gap-2 ${isOver ? 'text-white' : 'text-slate-800'}`}>
+                                        {isOver && <AlertTriangle size={18} className="fill-white text-red-600" />}
+                                        {current.toFixed(1)} <span className={`text-xs ${isOver ? 'text-red-200' : 'text-slate-400'}`}>/ {config.limit}h</span>
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className={`overflow-hidden rounded-2xl border border-slate-200 bg-white ${isPrint ? '' : 'shadow-xl'}`}>
+                    <table className="w-full border-collapse min-w-[800px]">
+                        <thead>
+                            <tr className="bg-slate-800 text-white">
+                                <th className="p-3 text-left font-semibold text-xs w-24">Horario</th>
+                                {DAYS.map(day => <th key={day} className="p-3 text-center font-semibold text-xs">{day}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {TIME_BLOCKS.map((block, bIdx) => (
+                                <tr key={bIdx} className="border-b border-slate-100 last:border-0">
+                                    <td className="p-3 bg-slate-50/50">
+                                        <div className="text-lg font-black text-slate-800 leading-none">{block.start}</div>
+                                        <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tight">al {block.end}</div>
+                                    </td>
+                                    {DAYS.map(day => {
+                                        const cell = weekData[day][bIdx];
+                                        const cat = CATEGORIES[cell.catId.toUpperCase()] || CATEGORIES.EMPTY;
+                                        return (
+                                            <td key={day} className="p-1">
+                                                <ScheduleCell 
+                                                    day={day} 
+                                                    bIdx={bIdx} 
+                                                    cell={cell} 
+                                                    cat={cat} 
+                                                    isPrint={isPrint} 
+                                                    onNoteChange={(val) => handleNoteChange(day, bIdx, val)}
+                                                    onMouseDown={() => handleMouseDown(day, bIdx)}
+                                                    onMouseUp={() => handleMouseUp(day, bIdx)}
+                                                    onMouseLeave={() => clearTimeout(timerRef.current)}
+                                                />
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+
+        // --- COMPONENTE PRINCIPAL ---
 
         function App() {
             const [schedules, setSchedules] = useState(() => {
                 return Array.from({ length: TOTAL_WEEKS }, () => {
                     const week = {};
                     DAYS.forEach(day => {
-                        week[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
+                        week[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false, note: '' }));
                     });
                     return week;
                 });
@@ -150,23 +296,30 @@
             const timerRef = useRef(null);
             const isLongPress = useRef(false);
 
+            // Cálculos de totales con los nuevos límites (15, 30, 5)
             const activeWeekTotals = useMemo(() => {
-                const counts = { presenciales: 0, autonomo: 0, experiencias: 0 };
+                const counts = { clases: 0, autonomo: 0, experiencias: 0 };
                 const currentWeek = schedules[activeWeekIndex];
                 DAYS.forEach(day => {
                     currentWeek[day].forEach((cell, index) => {
-                        if (counts.hasOwnProperty(cell.catId)) counts[cell.catId] += TIME_BLOCKS[index].duration;
+                        const catConfig = CATEGORIES[cell.catId.toUpperCase()];
+                        if (catConfig && catConfig.countType) {
+                            counts[catConfig.countType] += TIME_BLOCKS[index].duration;
+                        }
                     });
                 });
                 return counts;
             }, [schedules, activeWeekIndex]);
 
             const getWeekTotals = (index) => {
-                const counts = { presenciales: 0, autonomo: 0, experiencias: 0 };
+                const counts = { clases: 0, autonomo: 0, experiencias: 0 };
                 const currentWeek = schedules[index];
                 DAYS.forEach(day => {
                     currentWeek[day].forEach((cell, idx) => {
-                        if (counts.hasOwnProperty(cell.catId)) counts[cell.catId] += TIME_BLOCKS[idx].duration;
+                        const catConfig = CATEGORIES[cell.catId.toUpperCase()];
+                        if (catConfig && catConfig.countType) {
+                            counts[catConfig.countType] += TIME_BLOCKS[idx].duration;
+                        }
                     });
                 });
                 return counts;
@@ -182,6 +335,12 @@
                 setSchedules(newSchedules);
             };
 
+            const handleNoteChange = (day, blockIndex, value) => {
+                const newSchedules = [...schedules];
+                newSchedules[activeWeekIndex][day][blockIndex].note = value;
+                setSchedules(newSchedules);
+            };
+
             const togglePainPoint = (day, blockIndex) => {
                 const newSchedules = [...schedules];
                 const cell = newSchedules[activeWeekIndex][day][blockIndex];
@@ -190,11 +349,11 @@
             };
 
             const resetAllSchedules = () => {
-                if (window.confirm("¿Deseas borrar las 4 semanas de horario por completo?")) {
+                if (window.confirm("¿Deseas borrar las 10 semanas de horario por completo?")) {
                     setSchedules(Array.from({ length: TOTAL_WEEKS }, () => {
                         const week = {};
                         DAYS.forEach(day => {
-                            week[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
+                            week[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false, note: '' }));
                         });
                         return week;
                     }));
@@ -216,98 +375,6 @@
                 if (!isLongPress.current) handleCategoryChange(day, blockIndex);
             };
 
-            const WeekTable = ({ weekData, weekLabel, totals, isPrint = false }) => (
-                <div className={`${isPrint ? 'print-page-break' : ''}`}>
-                    {/* Encabezado Repetido en Impresión */}
-                    {isPrint && (
-                        <div className="flex justify-between items-center mb-6 px-2">
-                            <div>
-                                <h1 className="text-3xl font-black text-slate-900 leading-tight">PROGRAMA ACADÉMICO SEMANAL</h1>
-                                <p className="text-slate-500 text-sm font-bold uppercase tracking-widest mt-1">Plan de Gestión del Tiempo</p>
-                            </div>
-                            <img src="https://image.admisiones.tec.mx/lib/fe2b11747364057f721176/m/1/b910ad21-1913-4ce0-8f35-38c908814125.png" alt="Logo" className="w-48 object-contain" />
-                        </div>
-                    )}
-
-                    <div className="flex justify-between items-end mb-4">
-                        <div className="flex gap-6 items-end">
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trimestre</span>
-                                <span className="text-lg font-bold text-slate-800 border-b-2 border-slate-100 min-w-[140px]">{trimestre || "—"}</span>
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Periodo</span>
-                                <span className="text-lg font-bold text-indigo-600 border-b-2 border-indigo-100 min-w-[120px]">{weekLabel}</span>
-                            </div>
-                        </div>
-                        
-                        {/* Totales más grandes */}
-                        <div className="flex gap-3">
-                            {Object.entries(CATEGORIES).filter(([_, d]) => d.count).map(([key, data]) => {
-                                const isOver = totals[data.id] > data.limit;
-                                return (
-                                    <div key={key} className={`flex flex-col items-center justify-center px-6 py-2 rounded-xl transition-all ${isOver ? 'bg-red-600 text-white ring-4 ring-red-400 shadow-xl scale-110' : 'bg-white border-2 border-slate-200'}`}>
-                                        <span className={`text-[9px] font-black uppercase mb-1 tracking-tighter ${isOver ? 'text-red-100' : 'text-slate-400'}`}>{data.label}</span>
-                                        <span className={`text-xl font-black flex items-center gap-2 ${isOver ? 'text-white' : 'text-slate-800'}`}>
-                                            {isOver && <AlertTriangle size={18} className="fill-white text-red-600" />}
-                                            {totals[data.id].toFixed(1)} <span className={`text-xs ${isOver ? 'text-red-200' : 'text-slate-400'}`}>/ {data.limit}h</span>
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    <div className={`overflow-hidden rounded-2xl border border-slate-200 bg-white ${isPrint ? '' : 'shadow-xl'}`}>
-                        <table className="w-full border-collapse min-w-[800px]">
-                            <thead>
-                                <tr className="bg-slate-800 text-white">
-                                    <th className="p-3 text-left font-semibold text-xs w-24">Horario</th>
-                                    {DAYS.map(day => <th key={day} className="p-3 text-center font-semibold text-xs">{day}</th>)}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {TIME_BLOCKS.map((block, bIdx) => (
-                                    <tr key={bIdx} className="border-b border-slate-100 last:border-0">
-                                        <td className="p-3 bg-slate-50/50">
-                                            <div className="text-lg font-black text-slate-800 leading-none">{block.start}</div>
-                                            <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tight">al {block.end}</div>
-                                        </td>
-                                        {DAYS.map(day => {
-                                            const cell = weekData[day][bIdx];
-                                            const cat = CATEGORIES[cell.catId.toUpperCase()] || CATEGORIES.EMPTY;
-                                            return (
-                                                <td key={day} className="p-1">
-                                                    <div
-                                                        onMouseDown={isPrint ? null : () => handleMouseDown(day, bIdx)}
-                                                        onMouseUp={isPrint ? null : () => handleMouseUp(day, bIdx)}
-                                                        onMouseLeave={isPrint ? null : () => clearTimeout(timerRef.current)}
-                                                        onTouchStart={isPrint ? null : (e) => { e.preventDefault(); handleMouseDown(day, bIdx); }}
-                                                        onTouchEnd={isPrint ? null : (e) => { e.preventDefault(); handleMouseUp(day, bIdx); }}
-                                                        className={`w-full h-14 rounded-xl p-1.5 flex flex-col items-center justify-center relative select-none border-2
-                                                            ${cat.color} ${cat.text} ${cell.catId === 'empty' ? 'border-dashed border-slate-200' : 'border-transparent shadow-sm hover:brightness-95'}
-                                                            ${cell.isPainPoint ? 'ring-4 ring-orange-500/50 border-orange-500 scale-95' : ''}
-                                                            ${isPrint ? '' : 'cursor-pointer active:scale-[0.98]'}
-                                                        `}
-                                                    >
-                                                        <span className="text-[9px] font-black uppercase text-center leading-tight">{cat.label}</span>
-                                                        {cell.isPainPoint && (
-                                                            <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-orange-600 rounded-full border border-white flex items-center justify-center shadow-md">
-                                                                <AlertTriangle size={10} className="text-white fill-white" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-
             return (
                 <div className="min-h-screen p-4 md:p-8 font-sans no-select relative">
                     {/* UI INTERACTIVA */}
@@ -322,7 +389,7 @@
                                 <div>
                                     <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Planificador de Horario</h1>
                                     <p className="text-slate-500 text-sm mt-1 flex items-center gap-2">
-                                        <MousePointer2 size={14} className="text-blue-500" /> Clic cambia categoría • <span className="font-bold text-orange-600">Manten presionado</span> para Dolor
+                                        <MousePointer2 size={14} className="text-blue-500" /> Clic cambia categoría • <span className="font-bold text-red-600 tracking-tighter">Mantén presionado</span> para Dolor
                                     </p>
                                 </div>
                                 <div className="flex flex-col items-end gap-2">
@@ -334,14 +401,14 @@
                                             <Printer size={14} /> Guardar-Imprimir
                                         </button>
                                     </div>
-                                    <div className="flex bg-slate-200 p-1 rounded-xl gap-1">
-                                        {[1, 2, 3, 4].map((num, i) => (
+                                    <div className="flex bg-slate-200 p-1 rounded-xl gap-1 flex-wrap justify-end max-w-sm md:max-w-none">
+                                        {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map((num, i) => (
                                             <button 
                                                 key={num}
                                                 onClick={() => setActiveWeekIndex(i)}
-                                                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${activeWeekIndex === i ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-300'}`}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all ${activeWeekIndex === i ? 'bg-white text-indigo-600 shadow-sm scale-110' : 'text-slate-500 hover:bg-slate-300'}`}
                                             >
-                                                Semana {num}
+                                                S{num}
                                             </button>
                                         ))}
                                     </div>
@@ -364,21 +431,28 @@
                             <WeekTable 
                                 weekData={schedules[activeWeekIndex]} 
                                 weekLabel={`Semana ${activeWeekIndex + 1}`} 
-                                totals={activeWeekTotals} 
+                                totals={activeWeekTotals}
+                                trimestre={trimestre}
+                                isPrint={false}
+                                handleNoteChange={handleNoteChange}
+                                handleMouseDown={handleMouseDown}
+                                handleMouseUp={handleMouseUp}
+                                timerRef={timerRef}
                             />
                         </div>
 
-                        {/* Guía de Colores */}
-                        <div className="mt-8 flex flex-wrap items-center justify-center gap-6 py-4 border-t border-slate-200 bg-white/50 rounded-b-2xl no-print">
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Presenciales</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Autónomo</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Experiencias</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-500"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Deleite</span></div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-600"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Dolor</span></div>
+                        {/* Leyenda en pantalla */}
+                        <div className="mt-8 flex flex-wrap items-center justify-center gap-6 py-5 border-t border-slate-200 bg-white/50 rounded-b-2xl no-print">
+                            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-blue-500 shadow-sm"></div><span className="text-[10px] font-black text-blue-600 uppercase">Clases (Aula)</span></div>
+                            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-green-500 shadow-sm"></div><span className="text-[10px] font-black text-green-600 uppercase">Trabajo Autónomo</span></div>
+                            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-yellow-400 shadow-sm"></div><span className="text-[10px] font-black text-yellow-600 uppercase">Exp. Insignias</span></div>
+                            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-pink-400 shadow-sm"></div><span className="text-[10px] font-black text-pink-500 uppercase">Exp. Activación</span></div>
+                            <div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full bg-orange-500 shadow-sm"></div><span className="text-[10px] font-black text-orange-600 uppercase">Microexperiencias</span></div>
+                            <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-300"><div className="w-4 h-4 rounded-full border-2 border-red-600 bg-white flex items-center justify-center shadow-sm"><div className="w-1.5 h-1.5 bg-red-600 rounded-full"></div></div><span className="text-[10px] font-black text-red-600 uppercase">Punto de Dolor</span></div>
                         </div>
                     </div>
 
-                    {/* CONTENEDOR DE IMPRESIÓN */}
+                    {/* CONTENEDOR DE IMPRESIÓN (Visible en PDF/Papel) */}
                     <div className="print-container no-select">
                         {schedules.map((week, idx) => (
                             <WeekTable 
@@ -386,18 +460,23 @@
                                 weekData={week}
                                 weekLabel={`Semana ${idx + 1}`}
                                 totals={getWeekTotals(idx)}
+                                trimestre={trimestre}
                                 isPrint={true}
+                                handleNoteChange={handleNoteChange}
+                                handleMouseDown={handleMouseDown}
+                                handleMouseUp={handleMouseUp}
+                                timerRef={timerRef}
                             />
                         ))}
                         
-                        {/* Guía para impresión */}
                         <div className="flex items-center justify-center gap-6 py-4 border-t border-slate-200 mt-4">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">Leyenda:</span>
-                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[9px] font-bold">Presenciales</span></div>
-                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"></div><span className="text-[9px] font-bold">Autónomo</span></div>
-                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-yellow-400"></div><span className="text-[9px] font-bold">Experiencias</span></div>
-                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-[9px] font-bold">Deleite</span></div>
-                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-600"></div><span className="text-[9px] font-bold">Dolor</span></div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Leyenda:</span>
+                            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div><span className="text-[9px] font-bold text-blue-700">Clases</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-green-500"></div><span className="text-[9px] font-bold text-green-700">Autónomo</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div><span className="text-[9px] font-bold text-yellow-600">Insignias</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-pink-400"></div><span className="text-[9px] font-bold text-pink-600">Activación</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-orange-500"></div><span className="text-[9px] font-bold text-orange-600">Micro</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 border border-red-600 rounded-full"></div><span className="text-[9px] font-bold text-red-600">Dolor</span></div>
                         </div>
                     </div>
                 </div>
