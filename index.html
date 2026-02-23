@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Horario Inteligente</title>
+    <title>Mi Horario Inteligente - 4 Semanas</title>
     <!-- Cargando React y Babel para procesar JSX en el navegador -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -16,37 +16,61 @@
         @media print {
             @page {
                 size: landscape; /* Fuerza la orientación horizontal */
-                margin: 10mm;
+                margin: 5mm;
             }
             body {
                 margin: 0;
                 padding: 0;
-                background: white;
-                zoom: 85%; /* Escala al 85% */
+                background: white !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
-            .no-print { display: none !important; }
-            button { display: none !important; }
             
-            /* Asegurar que el contenedor ocupe el ancho horizontal */
+            /* Ocultar elementos marcados como no-print */
+            .no-print { 
+                display: none !important; 
+            }
+            
+            /* Asegurar que el contenedor de impresión sea visible */
+            .print-container {
+                display: block !important;
+                width: 100% !important;
+                zoom: 85%; /* Escala al 85% solicitada */
+            }
+
+            /* Salto de página después de cada semana */
+            .print-page-break {
+                page-break-after: always !important;
+                break-after: page !important;
+                margin-bottom: 0 !important;
+                padding-top: 5mm;
+            }
+
+            /* Forzar el ancho completo del diseño */
             .max-w-6xl {
                 max-width: 100% !important;
                 width: 100% !important;
             }
-
-            input {
-                border: none !important;
-                padding: 0 !important;
-            }
         }
 
-        /* Prevención de selección de texto para mejorar la experiencia de mantener presionado */
+        /* Estilos en pantalla */
+        .print-container { display: none; }
+
+        /* Prevención de selección de texto */
         .no-select {
             -webkit-user-select: none;
             -moz-user-select: none;
             -ms-user-select: none;
             user-select: none;
+        }
+
+        /* Animación suave para cambio de semana (solo en el contenedor de semana) */
+        .fade-in {
+            animation: fadeIn 0.4s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
@@ -107,57 +131,75 @@
         ];
 
         const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+        const TOTAL_WEEKS = 4;
 
         function App() {
-            const [schedule, setSchedule] = useState(() => {
-                const initial = {};
-                DAYS.forEach(day => {
-                    initial[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
+            const [schedules, setSchedules] = useState(() => {
+                return Array.from({ length: TOTAL_WEEKS }, () => {
+                    const week = {};
+                    DAYS.forEach(day => {
+                        week[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
+                    });
+                    return week;
                 });
-                return initial;
             });
 
+            const [activeWeekIndex, setActiveWeekIndex] = useState(0);
             const [trimestre, setTrimestre] = useState("");
-            const [semana, setSemana] = useState("");
 
             const timerRef = useRef(null);
             const isLongPress = useRef(false);
 
-            const totals = useMemo(() => {
+            const activeWeekTotals = useMemo(() => {
                 const counts = { presenciales: 0, autonomo: 0, experiencias: 0 };
+                const currentWeek = schedules[activeWeekIndex];
                 DAYS.forEach(day => {
-                    schedule[day].forEach((cell, index) => {
+                    currentWeek[day].forEach((cell, index) => {
                         if (counts.hasOwnProperty(cell.catId)) counts[cell.catId] += TIME_BLOCKS[index].duration;
                     });
                 });
                 return counts;
-            }, [schedule]);
+            }, [schedules, activeWeekIndex]);
+
+            const getWeekTotals = (index) => {
+                const counts = { presenciales: 0, autonomo: 0, experiencias: 0 };
+                const currentWeek = schedules[index];
+                DAYS.forEach(day => {
+                    currentWeek[day].forEach((cell, idx) => {
+                        if (counts.hasOwnProperty(cell.catId)) counts[cell.catId] += TIME_BLOCKS[idx].duration;
+                    });
+                });
+                return counts;
+            };
 
             const handleCategoryChange = (day, blockIndex) => {
-                const currentCell = schedule[day][blockIndex];
+                const newSchedules = [...schedules];
+                const currentCell = newSchedules[activeWeekIndex][day][blockIndex];
                 const keys = Object.values(CATEGORIES).map(c => c.id);
-                const currentIndex = keys.indexOf(currentCell.catId);
-                const nextIndex = (currentIndex + 1) % keys.length;
-                const newSchedule = { ...schedule };
-                newSchedule[day][blockIndex] = { ...currentCell, catId: keys[nextIndex] };
-                setSchedule(newSchedule);
+                const nextIndex = (keys.indexOf(currentCell.catId) + 1) % keys.length;
+                
+                newSchedules[activeWeekIndex][day][blockIndex] = { ...currentCell, catId: keys[nextIndex] };
+                setSchedules(newSchedules);
             };
 
             const togglePainPoint = (day, blockIndex) => {
-                const newSchedule = { ...schedule };
-                newSchedule[day][blockIndex] = { ...newSchedule[day][blockIndex], isPainPoint: !newSchedule[day][blockIndex].isPainPoint };
-                setSchedule(newSchedule);
+                const newSchedules = [...schedules];
+                const cell = newSchedules[activeWeekIndex][day][blockIndex];
+                newSchedules[activeWeekIndex][day][blockIndex] = { ...cell, isPainPoint: !cell.isPainPoint };
+                setSchedules(newSchedules);
             };
 
-            const resetSchedule = () => {
-                if (window.confirm("¿Estás seguro de que quieres borrar todo el horario? Esta acción no se puede deshacer.")) {
-                    const initial = {};
-                    DAYS.forEach(day => {
-                        initial[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
-                    });
-                    setSchedule(initial);
+            const resetAllSchedules = () => {
+                if (window.confirm("¿Deseas borrar las 4 semanas de horario por completo?")) {
+                    setSchedules(Array.from({ length: TOTAL_WEEKS }, () => {
+                        const week = {};
+                        DAYS.forEach(day => {
+                            week[day] = TIME_BLOCKS.map(() => ({ catId: 'empty', isPainPoint: false }));
+                        });
+                        return week;
+                    }));
                     setTrimestre("");
-                    setSemana("");
+                    setActiveWeekIndex(0);
                 }
             };
 
@@ -174,130 +216,188 @@
                 if (!isLongPress.current) handleCategoryChange(day, blockIndex);
             };
 
-            return (
-                <div className="min-h-screen p-4 md:p-8 font-sans no-select relative">
-                    <div className="max-w-6xl mx-auto">
-                        
-                        {/* Logo superior derecho */}
-                        <div className="absolute top-4 right-4 md:top-8 md:right-8 w-32 md:w-48">
-                            <img 
-                                src="https://image.admisiones.tec.mx/lib/fe2b11747364057f721176/m/1/b910ad21-1913-4ce0-8f35-38c908814125.png" 
-                                alt="Logo Tec" 
-                                className="w-full h-auto object-contain"
-                            />
-                        </div>
-
-                        <header className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4 no-print pr-36">
+            const WeekTable = ({ weekData, weekLabel, totals, isPrint = false }) => (
+                <div className={`${isPrint ? 'print-page-break' : ''}`}>
+                    {/* Encabezado Repetido en Impresión */}
+                    {isPrint && (
+                        <div className="flex justify-between items-center mb-6 px-2">
                             <div>
-                                <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Planificador de Horario</h1>
-                                <p className="text-slate-500 flex items-center gap-2 mt-1">
-                                    <MousePointer2 size={16} className="text-blue-500" /> Clic para categoría • <span className="font-bold text-orange-600">Mantén apretado</span> para Punto de Dolor
-                                </p>
+                                <h1 className="text-3xl font-black text-slate-900 leading-tight">PROGRAMA ACADÉMICO SEMANAL</h1>
+                                <p className="text-slate-500 text-sm font-bold uppercase tracking-widest mt-1">Plan de Gestión del Tiempo</p>
                             </div>
-                            <div className="flex gap-3">
-                                <button 
-                                    onClick={resetSchedule} 
-                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-600 rounded-lg shadow-sm font-medium transition-colors"
-                                    title="Borrar todo el horario"
-                                >
-                                    <RotateCcw size={16} /> Reiniciar
-                                </button>
-                                <button 
-                                    onClick={() => window.print()} 
-                                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm font-medium transition-colors"
-                                >
-                                    <Printer size={16} /> Imprimir
-                                </button>
-                            </div>
-                        </header>
+                            <img src="https://image.admisiones.tec.mx/lib/fe2b11747364057f721176/m/1/b910ad21-1913-4ce0-8f35-38c908814125.png" alt="Logo" className="w-48 object-contain" />
+                        </div>
+                    )}
 
-                        {/* Bloques de Trimestre y Semana */}
-                        <div className="flex gap-8 mb-8 mt-12 md:mt-0">
-                            <div className="flex flex-col min-w-[140px]">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Trimestre</label>
-                                <input 
-                                    type="text" 
-                                    value={trimestre} 
-                                    onChange={(e) => setTrimestre(e.target.value)}
-                                    placeholder="Ej. Invierno 2024"
-                                    className="bg-transparent border-b-2 border-slate-200 focus:border-indigo-500 outline-none pb-1 font-bold text-slate-700 transition-colors placeholder:font-normal placeholder:text-slate-300"
-                                />
+                    <div className="flex justify-between items-end mb-4">
+                        <div className="flex gap-6 items-end">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trimestre</span>
+                                <span className="text-lg font-bold text-slate-800 border-b-2 border-slate-100 min-w-[140px]">{trimestre || "—"}</span>
                             </div>
-                            <div className="flex flex-col min-w-[100px]">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Semana</label>
-                                <input 
-                                    type="text" 
-                                    value={semana} 
-                                    onChange={(e) => setSemana(e.target.value)}
-                                    placeholder="Ej. 1"
-                                    className="bg-transparent border-b-2 border-slate-200 focus:border-indigo-500 outline-none pb-1 font-bold text-slate-700 transition-colors placeholder:font-normal placeholder:text-slate-300"
-                                />
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Periodo</span>
+                                <span className="text-lg font-bold text-indigo-600 border-b-2 border-indigo-100 min-w-[120px]">{weekLabel}</span>
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        
+                        {/* Totales más grandes */}
+                        <div className="flex gap-3">
                             {Object.entries(CATEGORIES).filter(([_, d]) => d.count).map(([key, data]) => {
                                 const isOver = totals[data.id] > data.limit;
                                 return (
-                                    <div key={key} className={`p-4 rounded-xl border shadow-sm ${isOver ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{data.label}</span>
-                                            {isOver ? <AlertTriangle size={18} className="text-red-500" /> : <Clock size={18} className="text-slate-400 no-print" />}
-                                        </div>
-                                        <div className="flex items-baseline gap-2">
-                                            <span className={`text-3xl font-black ${isOver ? 'text-red-600' : 'text-slate-800'}`}>{totals[data.id].toFixed(1)}h</span>
-                                            <span className="text-slate-400 text-sm">/ {data.limit}h</span>
-                                        </div>
+                                    <div key={key} className={`flex flex-col items-center justify-center px-6 py-2 rounded-xl transition-all ${isOver ? 'bg-red-600 text-white ring-4 ring-red-400 shadow-xl scale-110' : 'bg-white border-2 border-slate-200'}`}>
+                                        <span className={`text-[9px] font-black uppercase mb-1 tracking-tighter ${isOver ? 'text-red-100' : 'text-slate-400'}`}>{data.label}</span>
+                                        <span className={`text-xl font-black flex items-center gap-2 ${isOver ? 'text-white' : 'text-slate-800'}`}>
+                                            {isOver && <AlertTriangle size={18} className="fill-white text-red-600" />}
+                                            {totals[data.id].toFixed(1)} <span className={`text-xs ${isOver ? 'text-red-200' : 'text-slate-400'}`}>/ {data.limit}h</span>
+                                        </span>
                                     </div>
                                 );
                             })}
                         </div>
+                    </div>
 
-                        <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-xl bg-white">
-                            <table className="w-full border-collapse min-w-[800px]">
-                                <thead>
-                                    <tr className="bg-slate-800 text-white">
-                                        <th className="p-4 text-left font-semibold text-sm w-32 border-b border-slate-700">Horario</th>
-                                        {DAYS.map(day => <th key={day} className="p-4 text-center font-semibold text-sm border-b border-slate-700">{day}</th>)}
+                    <div className={`overflow-hidden rounded-2xl border border-slate-200 bg-white ${isPrint ? '' : 'shadow-xl'}`}>
+                        <table className="w-full border-collapse min-w-[800px]">
+                            <thead>
+                                <tr className="bg-slate-800 text-white">
+                                    <th className="p-3 text-left font-semibold text-xs w-24">Horario</th>
+                                    {DAYS.map(day => <th key={day} className="p-3 text-center font-semibold text-xs">{day}</th>)}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {TIME_BLOCKS.map((block, bIdx) => (
+                                    <tr key={bIdx} className="border-b border-slate-100 last:border-0">
+                                        <td className="p-3 bg-slate-50/50">
+                                            <div className="text-lg font-black text-slate-800 leading-none">{block.start}</div>
+                                            <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tight">al {block.end}</div>
+                                        </td>
+                                        {DAYS.map(day => {
+                                            const cell = weekData[day][bIdx];
+                                            const cat = CATEGORIES[cell.catId.toUpperCase()] || CATEGORIES.EMPTY;
+                                            return (
+                                                <td key={day} className="p-1">
+                                                    <div
+                                                        onMouseDown={isPrint ? null : () => handleMouseDown(day, bIdx)}
+                                                        onMouseUp={isPrint ? null : () => handleMouseUp(day, bIdx)}
+                                                        onMouseLeave={isPrint ? null : () => clearTimeout(timerRef.current)}
+                                                        onTouchStart={isPrint ? null : (e) => { e.preventDefault(); handleMouseDown(day, bIdx); }}
+                                                        onTouchEnd={isPrint ? null : (e) => { e.preventDefault(); handleMouseUp(day, bIdx); }}
+                                                        className={`w-full h-14 rounded-xl p-1.5 flex flex-col items-center justify-center relative select-none border-2
+                                                            ${cat.color} ${cat.text} ${cell.catId === 'empty' ? 'border-dashed border-slate-200' : 'border-transparent shadow-sm hover:brightness-95'}
+                                                            ${cell.isPainPoint ? 'ring-4 ring-orange-500/50 border-orange-500 scale-95' : ''}
+                                                            ${isPrint ? '' : 'cursor-pointer active:scale-[0.98]'}
+                                                        `}
+                                                    >
+                                                        <span className="text-[9px] font-black uppercase text-center leading-tight">{cat.label}</span>
+                                                        {cell.isPainPoint && (
+                                                            <div className="absolute top-0.5 right-0.5 w-4 h-4 bg-orange-600 rounded-full border border-white flex items-center justify-center shadow-md">
+                                                                <AlertTriangle size={10} className="text-white fill-white" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            );
+                                        })}
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {TIME_BLOCKS.map((block, bIdx) => (
-                                        <tr key={bIdx} className="border-b border-slate-100 last:border-0">
-                                            <td className="p-4 bg-slate-50/50">
-                                                <div className="text-xl font-black text-slate-800 leading-none">{block.start}</div>
-                                                <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase">hasta {block.end}</div>
-                                            </td>
-                                            {DAYS.map(day => {
-                                                const cell = schedule[day][bIdx];
-                                                const cat = CATEGORIES[cell.catId.toUpperCase()] || CATEGORIES.EMPTY;
-                                                return (
-                                                    <td key={day} className="p-1">
-                                                        <div
-                                                            onMouseDown={() => handleMouseDown(day, bIdx)}
-                                                            onMouseUp={() => handleMouseUp(day, bIdx)}
-                                                            onMouseLeave={() => clearTimeout(timerRef.current)}
-                                                            onTouchStart={(e) => { e.preventDefault(); handleMouseDown(day, bIdx); }}
-                                                            onTouchEnd={(e) => { e.preventDefault(); handleMouseUp(day, bIdx); }}
-                                                            className={`w-full h-16 rounded-xl p-2 flex flex-col items-center justify-center relative cursor-pointer select-none border-2 transition-all
-                                                                ${cat.color} ${cat.text} ${cell.catId === 'empty' ? 'border-dashed border-slate-200' : 'border-transparent shadow-sm'}
-                                                                ${cell.isPainPoint ? 'ring-4 ring-orange-500/50 border-orange-500 scale-95 shadow-inner' : ''}
-                                                            `}
-                                                        >
-                                                            <span className="text-[10px] font-black uppercase text-center leading-tight">{cat.label}</span>
-                                                            {cell.isPainPoint && (
-                                                                <div className="absolute top-1 right-1 w-5 h-5 bg-orange-600 rounded-full border border-white flex items-center justify-center shadow-md">
-                                                                    <AlertTriangle size={12} className="text-white fill-white" />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 font-sans no-select relative">
+                    {/* UI INTERACTIVA */}
+                    <div className="max-w-6xl mx-auto no-print">
+                        
+                        <div className="absolute top-4 right-4 md:top-8 md:right-8 w-32 md:w-48">
+                            <img src="https://image.admisiones.tec.mx/lib/fe2b11747364057f721176/m/1/b910ad21-1913-4ce0-8f35-38c908814125.png" alt="Logo Tec" className="w-full h-auto" />
+                        </div>
+
+                        <header className="mb-6 pr-36">
+                            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Planificador de Horario</h1>
+                                    <p className="text-slate-500 text-sm mt-1 flex items-center gap-2">
+                                        <MousePointer2 size={14} className="text-blue-500" /> Clic cambia categoría • <span className="font-bold text-orange-600">Manten presionado</span> para Dolor
+                                    </p>
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                    <div className="flex gap-2">
+                                        <button onClick={resetAllSchedules} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 hover:bg-red-50 hover:text-red-600 rounded-lg shadow-sm text-xs font-bold transition-all">
+                                            <RotateCcw size={14} /> Reiniciar Todo
+                                        </button>
+                                        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-md text-xs font-bold transition-all active:scale-95">
+                                            <Printer size={14} /> Guardar-Imprimir
+                                        </button>
+                                    </div>
+                                    <div className="flex bg-slate-200 p-1 rounded-xl gap-1">
+                                        {[1, 2, 3, 4].map((num, i) => (
+                                            <button 
+                                                key={num}
+                                                onClick={() => setActiveWeekIndex(i)}
+                                                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${activeWeekIndex === i ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-300'}`}
+                                            >
+                                                Semana {num}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </header>
+
+                        <div className="mb-8 max-w-[200px]">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Trimestre</label>
+                            <input 
+                                type="text" 
+                                value={trimestre} 
+                                onChange={(e) => setTrimestre(e.target.value)}
+                                placeholder="Ej. Invierno 2024"
+                                className="w-full bg-transparent border-b-2 border-slate-200 focus:border-indigo-500 outline-none pb-1 font-bold text-slate-700 transition-colors placeholder:font-normal placeholder:text-slate-300"
+                            />
+                        </div>
+
+                        <div key={activeWeekIndex} className="fade-in">
+                            <WeekTable 
+                                weekData={schedules[activeWeekIndex]} 
+                                weekLabel={`Semana ${activeWeekIndex + 1}`} 
+                                totals={activeWeekTotals} 
+                            />
+                        </div>
+
+                        {/* Guía de Colores */}
+                        <div className="mt-8 flex flex-wrap items-center justify-center gap-6 py-4 border-t border-slate-200 bg-white/50 rounded-b-2xl no-print">
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Presenciales</span></div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Autónomo</span></div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Experiencias</span></div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-500"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Deleite</span></div>
+                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-600"></div><span className="text-[10px] font-bold text-slate-600 uppercase">Dolor</span></div>
+                        </div>
+                    </div>
+
+                    {/* CONTENEDOR DE IMPRESIÓN */}
+                    <div className="print-container no-select">
+                        {schedules.map((week, idx) => (
+                            <WeekTable 
+                                key={idx}
+                                weekData={week}
+                                weekLabel={`Semana ${idx + 1}`}
+                                totals={getWeekTotals(idx)}
+                                isPrint={true}
+                            />
+                        ))}
+                        
+                        {/* Guía para impresión */}
+                        <div className="flex items-center justify-center gap-6 py-4 border-t border-slate-200 mt-4">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Leyenda:</span>
+                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span className="text-[9px] font-bold">Presenciales</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"></div><span className="text-[9px] font-bold">Autónomo</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-yellow-400"></div><span className="text-[9px] font-bold">Experiencias</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-[9px] font-bold">Deleite</span></div>
+                            <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-600"></div><span className="text-[9px] font-bold">Dolor</span></div>
                         </div>
                     </div>
                 </div>
